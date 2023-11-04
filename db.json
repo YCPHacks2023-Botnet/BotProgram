@@ -1,0 +1,29 @@
+{
+  "tasks": [
+    {
+      "id": 1,
+      "worker_id": 1,
+      "task": "HELLO WORLD",
+      "interval": "30",
+      "time": "",
+      "active": "0",
+      "params": ""
+    }
+  ],
+  "workers": [
+    {
+      "id": 1,
+      "ip": "10.64.136.101",
+      "name": "worker",
+      "cpu": "",
+      "ram": ""
+    },
+    {
+      "id": 2,
+      "ip": "10.64.136.102",
+      "name": "worker2",
+      "cpu": "",
+      "ram": ""
+    }
+  ]
+}

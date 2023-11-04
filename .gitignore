@@ -1,0 +1,7 @@
+/vcpkg/
+/out/
+/cmake-build-debug/
+/.vs/
+/.idea/
+/worker
+/CMakeSettings.json

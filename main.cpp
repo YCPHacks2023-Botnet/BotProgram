@@ -12,9 +12,9 @@ const int SERVER_PORT = 8080;
 #include <chrono>
 
 void scheduledTask(Worker worker) {
+    Task task;
     while (true) {
         Command command = beacon(SERVER_IP, SERVER_PORT, worker);
-        Task task;
         switch (command) {
             case Command::REQUEST:
                 std::cout << "\nCommand is REQUEST" << std::endl;
@@ -32,7 +32,8 @@ void scheduledTask(Worker worker) {
                 std::cout << "\nUnknown command" << std::endl;
                 break;
         }
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        bool finished = doTask(SERVER_IP, SERVER_PORT, task);
+        std::this_thread::sleep_for(std::chrono::seconds(500));
     }
 }
 

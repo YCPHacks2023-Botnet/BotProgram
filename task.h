@@ -7,6 +7,7 @@ class TaskParameters {
 public:
     std::string address;
     int interval;
+    bool log;
 
     TaskParameters();
 };

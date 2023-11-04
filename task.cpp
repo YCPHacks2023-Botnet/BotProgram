@@ -10,6 +10,7 @@ Task::Task() {
 TaskParameters::TaskParameters() {
     interval = 10;
     address = "0.0.0.0";
+    log = false;
 }
 
 std::string progressToString(Progress progress) {

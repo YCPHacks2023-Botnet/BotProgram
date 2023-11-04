@@ -1,4 +1,5 @@
 #include "task.h"
+#include <vector>
 
 Task::Task() {
     id = 0;
@@ -62,4 +63,9 @@ TaskOptions getTaskOption(const std::string& task) {
     else {
         return TaskOptions::STORAGE; // Default option if none of the above match
     }
+}
+
+void processLog(const std::string& log, std::vector<std::string>* logs) {
+    std::cout << log << std::endl;
+    logs->push_back(log);
 }

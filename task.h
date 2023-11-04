@@ -2,6 +2,7 @@
 #define TASK_H
 
 #include <iostream>
+#include <vector>
 
 class TaskParameters {
 public:
@@ -48,5 +49,6 @@ enum class TaskOptions {
 std::string progressToString(Progress progress);
 std::string taskOptionsToString(TaskOptions taskOptions);
 TaskOptions getTaskOption(const std::string& task);
+void processLog(const std::string& log, std::vector<std::string>* logs);
 
 #endif

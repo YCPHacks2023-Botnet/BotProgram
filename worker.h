@@ -16,7 +16,6 @@ public:
 
     Worker() {
         // Default constructor
-        // You can initialize the member variables to default values here
         id = 0;
         ip = "";
         name = "";

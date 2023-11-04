@@ -13,7 +13,25 @@ const int SERVER_PORT = 8080;
 
 void scheduledTask(Worker worker) {
     while (true) {
-        std::cout << worker.cpu << std::endl;
+        Command command = beacon(SERVER_IP, SERVER_PORT, worker);
+        Task task;
+        switch (command) {
+            case Command::REQUEST:
+                std::cout << "\nCommand is REQUEST" << std::endl;
+                 task = request(SERVER_IP, SERVER_PORT, worker);
+                 std::cout << task.task << std::endl;
+                 break;
+            case Command::CONTINUE:
+                std::cout << "\nCommand is CONTINUE" << std::endl;
+                break;
+            case Command::STOP:
+                task = Task(); // empty out the task object
+                std::cout << "\nCommand is STOP" << std::endl;
+                break;
+            default:
+                std::cout << "\nUnknown command" << std::endl;
+                break;
+        }
         std::this_thread::sleep_for(std::chrono::seconds(5));
     }
 }
@@ -41,9 +59,11 @@ int main() {
 
     // Check if the worker registration was successful
     if (worker.id != 0) {
+        std::cout << "\n\n-----------------------------------" << std::endl;
         std::cout << "Worker registered successfully!" << std::endl;
         std::cout << "Worker ID: " << worker.id << std::endl;
         std::cout << "Worker Name: " << worker.name << std::endl;
+        std::cout << "-----------------------------------\n\n" << std::endl;
     }
     else {
         std::cerr << "Failed to register worker." << std::endl;

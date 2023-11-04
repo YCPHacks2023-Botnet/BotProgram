@@ -1,8 +1,13 @@
 # BotProgram
 
-#### Build program
+#### Build program linux
 ```shell
 g++ main.cpp -o worker -lstdc++
+```
+
+#### Build program windows
+```shell
+cl.exe main.cpp win_functions.cpp ws2_32.lib
 ```
 
 #### Run Local Server

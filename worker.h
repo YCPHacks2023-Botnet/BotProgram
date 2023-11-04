@@ -1,3 +1,6 @@
+#ifndef WORKER_H
+#define WORKER_H
+
 #include <iostream>
 
 /*
@@ -42,3 +45,4 @@ public:
     }
 };
 
+#endif

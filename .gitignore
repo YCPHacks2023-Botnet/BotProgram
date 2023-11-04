@@ -5,3 +5,6 @@
 /.idea/
 /worker
 /CMakeSettings.json
+/main.exe
+/main.obj
+/win_functions.obj

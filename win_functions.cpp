@@ -325,69 +325,20 @@ Task request(const char* serverIP, int serverPort, Worker worker) {
         return Task();
     }
 
-    const int receiveBufferSize = 1024;
-    char receiveBuffer[receiveBufferSize];
-
-    std::string response;
-
-    int bytesRead;
-    do {
-        bytesRead = recv(sock, receiveBuffer, receiveBufferSize - 1, 0);
-        if (bytesRead > 0) {
-            receiveBuffer[bytesRead] = '\0';
-            response += receiveBuffer;
-        }
-    } while (bytesRead > 0);
-
-    std::cout << "Received response:\n" << response << std::endl;
-
-    // Find the start and end of the response data
-    std::string responseData;
-    size_t responseDataStart = response.find("{");
-    size_t responseDataEnd = response.rfind("}");
-    if (responseDataStart != std::string::npos && responseDataEnd != std::string::npos) {
-        responseData = response.substr(responseDataStart, responseDataEnd - responseDataStart + 1);
-    }
-
-    // Print the response data
-    //std::cout << "Received response data:\n" << responseData << std::endl;
-
-    size_t bodyStart = httpResponse.find("\r\n\r\n");
-
-    if (bodyStart != std::string::npos) {
-        std::string requestBody = httpResponse.substr(bodyStart + 4); // Skip the \r\n\r\n
-
-        // Now requestBody contains only the body of the request
-        //std::cout << "Request:\n" << httpResponse << std::endl;
-
-        //std::cout << "Request body:\n" << requestBody << std::endl;
-
-        // Remove trailing '0'
-        size_t lastNewline = requestBody.rfind('\n');
-        if (lastNewline != std::string::npos) {
-            lastNewline = lastNewline - 4;
-            std::string strippedRequestBody = requestBody.substr(0, lastNewline);
-            //std::cout << "Stripped request body:\n" << strippedRequestBody << std::endl;
-
-            size_t jsonDataStart = strippedRequestBody.find("{");
-            if (jsonDataStart != std::string::npos) {
-                std::string jsonData = strippedRequestBody.substr(jsonDataStart);
-                //std::cout << "Request body parsed:\n" << jsonData << std::endl;
-                responseData = jsonData;
-            }
-        }
-        else {
-            std::cerr << "Error: Unable to find newline character in request body." << std::endl;
-        }
+    size_t firstBrace = httpResponse.find_first_of('{');
+    size_t lastBrace = httpResponse.find_last_of('}');
+    std::string extractedJSON;
+    if (firstBrace != std::string::npos && lastBrace != std::string::npos && lastBrace > firstBrace) {
+        extractedJSON = httpResponse.substr(firstBrace, lastBrace - firstBrace + 1);
+        //std::cout << "Extracted JSON: " << extractedJSON << std::endl;
     }
     else {
-        std::cerr << "Unable to find the start of the request body" << std::endl;
+        std::cout << "JSON not found in the input string." << std::endl;
     }
-
 
     // Parse the JSON response data
     rapidjson::Document document;
-    document.Parse(responseData.c_str());
+    document.Parse(extractedJSON.c_str());
 
     if (document.HasParseError()) {
         std::cerr << "Failed to parse JSON." << std::endl;

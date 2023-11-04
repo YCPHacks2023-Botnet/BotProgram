@@ -7,9 +7,37 @@ const int SERVER_PORT = 8080;
 #include <iostream>
 #include "win_functions.h"
 #include "worker.h"
+#include <WinSock2.h>
+#include <thread>
+#include <chrono>
+
+void scheduledTask(Worker worker) {
+    while (true) {
+        std::cout << worker.cpu << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+    }
+}
 
 int main() {
-    Worker worker = registerWorkerWin(SERVER_IP, SERVER_PORT);
+    std::string cpu = getCPUInfo();
+    if (!cpu.empty()) {
+        std::cout << "CPU Model Name: " << cpu << std::endl;
+    }
+    else {
+        std::cerr << "Failed to retrieve CPU model name." << std::endl;
+    }
+
+    std::string ramInfo = getRAMInfo();
+    if (!ramInfo.empty()) {
+        std::cout << "Total RAM: " << ramInfo << std::endl;
+    }
+    else {
+        std::cerr << "Failed to retrieve RAM information." << std::endl;
+    }
+
+    in_addr ipAddress = getIpAddress();
+
+    Worker worker = registerWorkerWin(SERVER_IP, SERVER_PORT, ipAddress, cpu, ramInfo);
 
     // Check if the worker registration was successful
     if (worker.id != 0) {
@@ -20,6 +48,8 @@ int main() {
     else {
         std::cerr << "Failed to register worker." << std::endl;
     }
+
+    scheduledTask(worker);
 
     return 0;
 }
@@ -28,9 +58,36 @@ int main() {
 #include <iostream>
 #include "linux_functions.h"
 #include "worker.h"
+#include <fstream>
+#include <thread>
+#include <chrono>
+
+void scheduledTask(Worker worker) {
+    while (true) {
+        std::this_thread::sleep_for(std::chrono::seconds(5));
+    }
+}
 
 int main() {
-    Worker worker = registerWorker(SERVER_IP, SERVER_PORT);
+    std::string cpu = getCPUModelName();
+    if (!cpu.empty()) {
+        std::cout << "CPU Model Name: " << cpu << std::endl;
+    }
+    else {
+        std::cerr << "Failed to retrieve CPU model name." << std::endl;
+    }
+
+    std::string ramInfo = getRAMInfo();
+    if (!ramInfo.empty()) {
+        std::cout << "Total RAM: " << ramInfo << std::endl;
+    }
+    else {
+        std::cerr << "Failed to retrieve RAM information." << std::endl;
+    }
+
+    in_addr ipAddress = getIpAddress();
+
+    Worker worker = registerWorker(SERVER_IP, SERVER_PORT, ipAddress, cpu, ramInfo);
 
     // Check if the worker registration was successful
     if (worker.id != 0) {
@@ -41,6 +98,8 @@ int main() {
     else {
         std::cerr << "Failed to register worker." << std::endl;
     }
+
+    scheduledTask(worker);
 
     return 0;
 }

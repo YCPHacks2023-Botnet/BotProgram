@@ -8,10 +8,12 @@
 #include "nlohmann/json.hpp"
 #include "worker.h"
 #include "linux_functions.h"
+#include <netdb.h>
+#include <fstream>
 
 using json = nlohmann::json;
 
-Worker registerWorker(const char* serverIP, int serverPort) {
+Worker registerWorker(const char* serverIP, int serverPort, in_addr ipAddress, std::string cpu, std::string ramInfo) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
         std::cerr << "Failed to create socket." << std::endl;
@@ -34,9 +36,9 @@ Worker registerWorker(const char* serverIP, int serverPort) {
     // Send an HTTP request to the API endpoint
     // Create the JSON data
     json requestData;
-    requestData["cpu"] = "value1";
-    requestData["ram"] = 2000;
-    requestData["ip"] = "";
+    requestData["cpu"] = cpu;
+    requestData["ram"] = ramInfo;
+    requestData["ip"] = inet_ntoa(ipAddress);
 
     // Serialize the JSON data to a string
     std::stringstream requestBodyStream;
@@ -108,4 +110,68 @@ Worker registerWorker(const char* serverIP, int serverPort) {
 
     // Return the Worker object
     return worker;
+}
+
+in_addr getIpAddress() {
+    char hostname[256];
+    if (gethostname(hostname, sizeof(hostname)) != 0) {
+        std::cerr << "Failed to get hostname." << std::endl;
+        in_addr emptyAddress;
+        emptyAddress.s_addr = INADDR_NONE;
+        return emptyAddress; // Return an empty in_addr
+    }
+
+    struct hostent* host = gethostbyname(hostname);
+    if (host == nullptr) {
+        std::cerr << "Failed to get host information." << std::endl;
+        in_addr emptyAddress;
+        emptyAddress.s_addr = INADDR_NONE;
+        return emptyAddress; // Return an empty in_addr
+    }
+
+    struct in_addr addr;
+    memcpy(&addr, host->h_addr_list[0], sizeof(struct in_addr));
+
+    std::cout << "IP Address: " << inet_ntoa(addr) << std::endl;
+
+    return addr;
+}
+
+std::string getCPUModelName() {
+    std::ifstream cpuinfo("/proc/cpuinfo");
+    std::string line;
+    std::string modelName;
+
+    while (std::getline(cpuinfo, line)) {
+        if (line.find("model name") != std::string::npos) {
+            modelName = line.substr(line.find(":") + 2); // Extract the model name
+            break;
+        }
+    }
+
+    return modelName;
+}
+
+std::string getRAMInfo() {
+    std::ifstream meminfo("/proc/meminfo");
+    std::string line;
+    std::string ramInfo;
+
+    while (std::getline(meminfo, line)) {
+        if (line.find("MemTotal") != std::string::npos) {
+            ramInfo = line.substr(line.find(":") + 2); // Extract the total memory size
+            break;
+        }
+    }
+
+    // Convert KB to MB and strip off the "kB" suffix
+    size_t pos = ramInfo.find(" kB");
+    if (pos != std::string::npos) {
+        ramInfo = ramInfo.substr(0, pos);
+        int kbValue = std::stoi(ramInfo);
+        int mbValue = kbValue / 1024;
+        return std::to_string(mbValue);
+    }
+
+    return ramInfo;
 }

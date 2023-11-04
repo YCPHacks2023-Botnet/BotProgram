@@ -317,6 +317,12 @@ Task request(const char* serverIP, int serverPort, Worker worker) {
                 std::cout << "Interval: " << interval << std::endl;
                 taskObject.taskParams.interval = interval;
             }
+
+            if (taskParams.HasMember("log") && taskParams["log"].IsBool()) {
+                bool log = taskParams["log"].GetBool();
+                std::cout << "log: " << log << std::endl;
+                taskObject.taskParams.log = log;
+            }
         }
     }
 

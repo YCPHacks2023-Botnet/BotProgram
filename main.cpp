@@ -33,7 +33,7 @@ void scheduledTask(Worker worker) {
                 break;
         }
         bool finished = doTask(SERVER_IP, SERVER_PORT, task);
-        std::this_thread::sleep_for(std::chrono::seconds(500));
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 }
 

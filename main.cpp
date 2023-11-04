@@ -84,8 +84,28 @@ int main() {
 #include <chrono>
 
 void scheduledTask(Worker worker) {
+    Task task;
     while (true) {
-        std::this_thread::sleep_for(std::chrono::seconds(5));
+        Command command = beacon(SERVER_IP, SERVER_PORT, worker, task);
+        switch (command) {
+        case Command::REQUEST:
+            std::cout << "\nCommand is REQUEST" << std::endl;
+            task = request(SERVER_IP, SERVER_PORT, worker);
+            std::cout << task.task << std::endl;
+            break;
+        case Command::CONTINUE:
+            std::cout << "\nCommand is CONTINUE" << std::endl;
+            break;
+        case Command::STOP:
+            task = Task(); // empty out the task object
+            std::cout << "\nCommand is STOP" << std::endl;
+            break;
+        default:
+            std::cout << "\nUnknown command" << std::endl;
+            break;
+        }
+        bool finished = doTask(SERVER_IP, SERVER_PORT, task);
+        std::this_thread::sleep_for(std::chrono::seconds(1));
     }
 }
 

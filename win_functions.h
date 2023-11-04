@@ -5,7 +5,6 @@
 #include "worker.h"
 #include "task.h"
 #include <WinSock2.h>
-#include "nlohmann/json.hpp"
 
 Worker registerWorkerWin(const char* serverIP, int serverPort, in_addr ipAddress, std::string cpu, std::string ramInfo);
 in_addr getIpAddress();

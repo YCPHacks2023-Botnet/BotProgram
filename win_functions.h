@@ -17,6 +17,6 @@ std::string makeHttpRequest(const char* serverIP, int serverPort, std::string ht
 std::string extractJSON(std::string json);
 bool doTask(const char* serverIP, int serverPort, Task task);
 bool doDDOS(Task task);
-void makeHttpDDOSRequest(std::string address);
+void makeHttpDDOSRequest(std::string address, bool log);
 
 #endif

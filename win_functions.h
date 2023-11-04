@@ -13,5 +13,7 @@ std::string getCPUInfo();
 std::string getRAMInfo();
 Command beacon(const char* serverIP, int serverPort, Worker worker);
 Task request(const char* serverIP, int serverPort, Worker worker);
+std::string makeHttpRequest(const char* serverIP, int serverPort, std::string httpRequest);
+std::string extractJSON(std::string json);
 
 #endif

@@ -28,7 +28,8 @@ public:
 enum class Command {
     REQUEST,
     CONTINUE,
-    STOP
+    STOP,
+    REGISTER
 };
 
 enum class Progress {

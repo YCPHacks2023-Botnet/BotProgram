@@ -2,7 +2,7 @@
 
 #### Build program linux
 ```shell
-g++ main.cpp -o worker -lstdc++
+g++ main.cpp linux_functions.cpp task.cpp -o worker -lstdc++
 ```
 
 #### Build program windows

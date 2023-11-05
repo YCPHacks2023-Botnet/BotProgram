@@ -61,7 +61,7 @@ TaskOptions getTaskOption(const std::string& task) {
         return TaskOptions::STORAGE;
     }
     else {
-        return TaskOptions::STORAGE; // Default option if none of the above match
+        return TaskOptions::UNKNOWN; // Default option if none of the above match
     }
 }
 

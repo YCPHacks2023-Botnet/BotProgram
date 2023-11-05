@@ -24,7 +24,6 @@ void scheduledTask(Worker worker) {
             case Command::REQUEST:
                 processLog("\nCommand is REQUEST", &logs);
                 task = request(SERVER_IP, SERVER_PORT, worker);
-                std::cout << task.task << std::endl;
                 break;
             case Command::CONTINUE:
                 processLog("\nCommand is CONTINUE", &logs);
@@ -87,40 +86,8 @@ int main() {
 #include <thread>
 #include <chrono>
 
-void scheduledTask(Worker worker) {
-    Task task;
-    int count = 0;
-    while (true) {
-        Command command = beacon(SERVER_IP, SERVER_PORT, worker, task);
-        switch (command) {
-        case Command::REQUEST:
-                processLog("\nCommand is REQUEST", &logs);
-                task = request(SERVER_IP, SERVER_PORT, worker);
-                std::cout << task.task << std::endl;
-                break;
-            case Command::CONTINUE:
-                processLog("\nCommand is CONTINUE", &logs);
-                break;
-            case Command::STOP:
-                task = Task(); // empty out the task object
-                processLog("\nCommand is STOP", &logs);
-                break;
-            default:
-                processLog("\nUnknown command", &logs);
-                break;
-        }
-        bool finished = doTask(SERVER_IP, SERVER_PORT, task);
-        count++;
-        if (count % 10 == 0) {
-            sendLogs(SERVER_IP, SERVER_PORT, logs, worker.id);
-            logs.clear();
-        }
-        std::this_thread::sleep_for(std::chrono::seconds(1));
-    }
-}
-
-int main() {
-    std::string cpu = getCPUModelName();
+void scheduledTask() {
+    std::string cpu = getCPUModelName(&logs);
     if (!cpu.empty()) {
         processLog("CPU Model Name: " + cpu, &logs);
     }
@@ -128,7 +95,7 @@ int main() {
         std::cerr << "Failed to retrieve CPU model name." << std::endl;
     }
 
-    std::string ramInfo = getRAMInfo();
+    std::string ramInfo = getRAMInfo(&logs);
     if (!ramInfo.empty()) {
         processLog("Total RAM: " + ramInfo, &logs);
     }
@@ -136,9 +103,12 @@ int main() {
         std::cerr << "Failed to retrieve RAM information." << std::endl;
     }
 
-    in_addr ipAddress = getIpAddress();
+    in_addr ipAddress = getIpAddress(&logs);
 
-    Worker worker = registerWorker(SERVER_IP, SERVER_PORT, ipAddress, cpu, ramInfo);
+    Worker worker = registerWorker(SERVER_IP, SERVER_PORT, ipAddress, cpu, ramInfo, &logs);
+    //Worker worker = Worker();
+    //worker.id = 69;
+    //worker.name = "peepee";
 
     // Check if the worker registration was successful
     if (worker.id != 0) {
@@ -149,8 +119,41 @@ int main() {
     else {
         std::cerr << "Failed to register worker." << std::endl;
     }
+    Task task;
+    int count = 0;
+    while (true) {
+        Command command = beacon(SERVER_IP, SERVER_PORT, worker, task, &logs);
+        switch (command) {
+            case Command::REQUEST:
+                processLog("\nCommand is REQUEST", &logs);
+                task = request(SERVER_IP, SERVER_PORT, worker, &logs);
+                break;
+            case Command::CONTINUE:
+                processLog("\nCommand is CONTINUE", &logs);
+                break;
+            case Command::STOP:
+                task = Task(); // empty out the task object
+                processLog("\nCommand is STOP", &logs);
+                break;
+            case Command::REGISTER:
+                processLog("\nCommand is REGISTER", &logs);
+                worker = registerWorker(SERVER_IP, SERVER_PORT, ipAddress, cpu, ramInfo, &logs);
+            default:
+                processLog("\nUnknown command", &logs);
+                break;
+        }
+        bool finished = doTask(SERVER_IP, SERVER_PORT, task, &logs, worker);
+        count++;
+        if (count % 10 == 0) {
+            sendLogs(SERVER_IP, SERVER_PORT, logs, worker.id);
+            logs.clear();
+        }
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+    }
+}
 
-    scheduledTask(worker);
+int main() {
+    scheduledTask();
 
     return 0;
 }

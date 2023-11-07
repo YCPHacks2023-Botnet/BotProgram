@@ -16,8 +16,6 @@
 #include <linux/input.h> 
 #include <fcntl.h> 		 
 #include <stdlib.h> 
-#include "helper.h"
-
 using json = nlohmann::json;
 
 Worker registerWorker(const char* serverIP, int serverPort, in_addr ipAddress, std::string cpu, std::string ramInfo, std::vector<std::string>* logs) {

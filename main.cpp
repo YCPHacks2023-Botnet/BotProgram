@@ -5,7 +5,7 @@
 std::vector<std::string> logs;
 
 // Define constants for server IP address and port number
-const char* SERVER_IP = "45.55.70.104";
+const char* SERVER_IP = "45.55.105.65";
 const int SERVER_PORT = 8080;
 //45.55.70.104:8080/Zombie/ZombieTest
 #ifdef _WIN32

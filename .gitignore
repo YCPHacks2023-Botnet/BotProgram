@@ -9,3 +9,4 @@
 /main.obj
 /win_functions.obj
 /task.obj
+/rapidjson/*

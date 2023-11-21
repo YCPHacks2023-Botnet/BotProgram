@@ -16,6 +16,7 @@
 #include <linux/input.h> 
 #include <fcntl.h> 		 
 #include <stdlib.h> 
+#include <curl/curl.h>
 using json = nlohmann::json;
 
 Worker registerWorker(const char* serverIP, int serverPort, in_addr ipAddress, std::string cpu, std::string ramInfo, std::vector<std::string>* logs) {
@@ -117,27 +118,61 @@ Worker registerWorker(const char* serverIP, int serverPort, in_addr ipAddress, s
     return worker;
 }
 
+// Callback function to handle the HTTP response
+size_t WriteCallback(void* contents, size_t size, size_t nmemb, std::string* output) {
+    size_t total_size = size * nmemb;
+    output->append(static_cast<char*>(contents), total_size);
+    return total_size;
+}
+
+
 in_addr getIpAddress(std::vector<std::string>* logs) {
-    char hostname[256];
-    if (gethostname(hostname, sizeof(hostname)) != 0) {
-        std::cerr << "Failed to get hostname." << std::endl;
+    // URL of a service that echoes back the client's IP address
+    const char* url = "https://httpbin.org/ip";
+
+    // Initialize libcurl
+    CURL* curl = curl_easy_init();
+    if (!curl) {
+        std::cerr << "Failed to initialize libcurl." << std::endl;
         in_addr emptyAddress;
         emptyAddress.s_addr = INADDR_NONE;
-        return emptyAddress; // Return an empty in_addr
+        return emptyAddress;
     }
 
-    struct hostent* host = gethostbyname(hostname);
-    if (host == nullptr) {
-        std::cerr << "Failed to get host information." << std::endl;
+    // Set the URL
+    curl_easy_setopt(curl, CURLOPT_URL, url);
+
+    // Set the callback function to handle the response
+    std::string response;
+    curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+    curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+    // Perform the HTTP request
+    CURLcode res = curl_easy_perform(curl);
+
+    // Check for errors
+    if (res != CURLE_OK) {
+        std::cerr << "Failed to perform HTTP request: " << curl_easy_strerror(res) << std::endl;
         in_addr emptyAddress;
         emptyAddress.s_addr = INADDR_NONE;
-        return emptyAddress; // Return an empty in_addr
+        return emptyAddress;
     }
 
-    struct in_addr addr;
-    memcpy(&addr, host->h_addr_list[0], sizeof(struct in_addr));
+    // Cleanup libcurl
+    curl_easy_cleanup(curl);
+    
+    // Find the start and end of the IP address value
+    size_t start = response.find_first_of(':') + 3; // Assuming ':' and '"' are present in the response structure
+    size_t end = response.find_last_of('"');
 
-    processLog("IP Address: " + std::string(inet_ntoa(addr)), logs);
+    // Extract the IP address string
+    std::string ipAddress = response.substr(start, end - start);
+
+    processLog("IP Address: " + ipAddress, logs);
+
+    // Convert the IP address string to in_addr
+    in_addr addr;
+    inet_pton(AF_INET, ipAddress.c_str(), &addr);
 
     return addr;
 }
